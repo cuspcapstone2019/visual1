@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7/leaflet.css" />
+    <script src="http://d3js.org/d3.v3.min.js" type="text/javascript"></script>
+    <script src="http://cdn.leafletjs.com/leaflet-0.7/leaflet.js"></script>
+    <script src='https://api.tiles.mapbox.com/mapbox.js/v1.6.4/mapbox.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox.js/v1.6.4/mapbox.css' rel='stylesheet' />
+    <style>
+    html,
+    body {
+        height: 100%;
+        width: 100%;
+    }
+    body {
+        margin: 0;
+    }
+    #map {
+        width: 50%;
+        height: 85%;
+		float: left;
+    }
+	#contorl{
+		position:absolute;
+		top:740px;
+		
+	}
+    svg {
+        position: relative;
+    }
+    path {
+        /* fill: yellow; */
+        stroke-width: 1px;
+        /* stroke: red; */
+        stroke-opacity: 1;
+    }
+    .travelMarker {
+        fill: yellow;
+        opacity: 0.75;
+    }
+    .waypoints {
+        /* fill: black; */
+        /* opacity: 1; */
+    }
+}
+.drinks {
+    stroke: black;
+    fill: blue;
+}
+.lineConnect {
+    fill: none;
+    /* stroke: aqua; */
+    opacity: 1;
+}
+.locnames {
+    fill: black;
+    text-shadow: 1px 1px 1px #FFF, 3px 3px 5px #000;
+    font-weight: bold;
+    font-size: 13px;
+}
+    </style>
+
+</head>
+
+<body>
+
+    <div id="demo"></div>
+    <div id="map"></div>
+	<div id="timescale">
+		
+	</div>
+	<p></p>
+	
+	<div id="contorl">
+		<input placeholder="input the taxi id" name="" id="inputid" value="" />
+		<button type="button" id= 'idselect'>render</button>
+		<button type='button' id = 'overspeed'>Overspeed</button>
+		<button type='button' id = 'overload'>Overload</button>
+		<button type='button' id = 'clear'>Clear</button>
+	
+	</div>
+	
+	
+    <script type="text/javascript">
+    var mapboxTiles = L.tileLayer('https://api.mapbox.com/styles/v1/yang490520/cjyqdw7y90e9u1cjtxaue8syl/tiles/256/{z}/{x}/{y}@2x?access_token=pk.eyJ1IjoieWFuZzQ5MDUyMCIsImEiOiJjanlxNmNhM2MwMTBhM2NsZTRyamQ5dHlqIn0.rpRj7lBf6j-pmy3yqK7sbA', {
+        attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+    });
+	var geodata;
+	d3.json('paths.geojson',function(geo){
+			geodata = geo
+	})
+	
+	
+	
+	var id_value
+	var inputid = document.getElementById('inputid')
+	var renderbt = document.getElementById('idselect')
+	var overspeed = document.getElementById('overspeed')
+	overspeed.style.background = 'red'
+	var overload = document.getElementById('overload')
+	overload.style.background = 'blue'
+	overload.style.color= 'white'
+	var clearbt = document.getElementById('clear')
+    var map = L.map('map')
+        .addLayer(mapboxTiles)
+        .setView([40.77, -73.975], 14);
+	var max_speed = 0.011176;
+    // we will be appending the SVG to the Leaflet map pane
+    // g (group) element will be inside the svg 
+    
+	
+    // if you don't include the leaflet-zoom-hide when a 
+    // user zooms in or out you will still see the phantom
+    // original SVG 
+    Math.radians = function(degrees) {
+	return degrees * Math.PI / 180;
+	}
+	
+    function geo_distance(lat1,lon1,lat2,lon2){
+		let radius = 6371;
+		let dlat = Math.radians(lat2 - lat1)
+		let dlon = Math.radians(lon2 - lon1)
+		let a = (Math.sin(dlat / 2) * Math.sin(dlat / 2) +
+         Math.cos(Math.radians(lat1)) * Math.cos(Math.radians(lat2)) *
+         Math.sin(dlon / 2) * Math.sin(dlon / 2))
+		let c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+		let d = radius * c
+		return d
+	}
+	
+	var hour = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
+	var timesvg = d3.select('#demo').append('svg')
+				.attr('width','1000px')
+				.attr('height','50px')
+				
+	timesvg.selectAll('.timechoice').data(hour)
+		.enter()
+		.append('rect')
+		.attr('class','timechoice')
+		.attr('id',function(d){
+			return 't'+d
+		})
+		.attr('x',function(d,i){
+			return 30*i
+		})
+		.attr('y','30px')
+		.attr('width','26px')
+		.attr('height','26px')
+		.attr('fill','black')
+		
+		
+	timesvg.selectAll('.timechoice_text').data(hour)
+		.enter()
+		.append('text')
+		.attr('class','timechoice_text')
+		.attr('x',function(d,i){
+			if (i<10){
+				return 30*i+7
+			}
+			else{
+				return 30*i+2
+			}
+			
+		})
+		.attr('y','18px')
+		.text(function(d){return d;})
+		.attr('fill','black')
+		.attr('stroke','black')
+		.style('font-size','15px')
+	var timeselect;
+	timesvg.selectAll('.timechoice')
+		.on('mouseover',function(){
+			d3.select(this)
+				.attr('fill','yellow')
+			timeselect = +this.id.slice(1)
+			over_func();
+		})
+		.on('mouseout',function(){
+			d3.select(this)
+				.attr('fill','black')
+			d3.select('#speed').remove()
+			
+			
+		})
+	
+    //read in the GeoJSON. This function is asynchronous so
+    // anything that needs the json file should be within
+    d3.csv("vehicle_paths_pnas.csv", function(collection) {
+    
+		
+	for (let i =0; i<collection.length-1;i++){
+		
+    		geodata.features.push({ 
+				"type": "Feature", 
+				"properties": { "latitude": Number(collection[i].Latitude), "longitude": Number(collection[i].Longitude), "Timestamp": Number(collection[i].Timestamp), "Vehicle_ID": collection[i].Vehicle_ID, "Num_Passengers":Number(collection[i].Num_Passengers)},
+				 "geometry": { "type": "Point", "coordinates": [Number(collection[i].Longitude), Number(collection[i].Latitude)] } })
+			
+			
+			
+    	}
+		geodata.features.forEach(function(d,i){
+			let date = new Date (d.properties.Timestamp*1000);
+			let hours = date.getHours()
+			d.properties.hours = hours
+		})
+		
+		
+	})
+	var prFeatures;
+	var prFeatures_load
+	function over_func(){
+			d3.select('#speed').remove()
+			let svg = d3.select(map.getPanes().overlayPane).append("svg").attr('id','speed');
+			
+			let g = svg.append("g").attr("class", "leaflet-zoom-hide");
+			let transform = d3.geo.transform({
+				point: projectPoint
+			});
+			let d3path = d3.geo.path().projection(transform);
+			let featuresdata = geodata.features.filter(function(d){
+				return d.properties.Vehicle_ID == inputid.value
+			})
+			let time = featuresdata.map(function(d){
+					return d.properties.Timestamp
+			})
+			let interval = time[time.length-1]-time[0]
+			let Latitude_list = featuresdata.map(function(d){
+					return d.properties.latitude
+			})
+			let Longitude_list = featuresdata.map(function(d){
+					return d.properties.longitude
+			})
+			
+			featuresdata.forEach(function(d,i){
+				d.properties.current_speed = geo_distance(d.properties.latitude,d.properties.longitude,Latitude_list[i+1],Longitude_list[i+1])/(time[i+1]-d.properties.Timestamp)
+			})
+			let speed_list = featuresdata.map(function(d){
+					return d.properties.current_speed
+			})
+			featuresdata.forEach(function(d,i){
+				if (!d.properties.current_speed){
+					d.properties.current_speed = 0;
+				}
+				else if (d.properties.current_speed == Infinity){
+					d.properties.current_speed = featuresdata[i-1].properties.current_speed
+				}
+			})
+			let featuresdata_speed=featuresdata.filter(function(d){
+				return (d.properties['current_speed'] > max_speed && d.properties.hours ==timeselect);
+			})
+			let featuresdata_passenger=featuresdata.filter(function(d){
+				return (d.properties['Num_Passengers'] > 4 && d.properties.hours ==timeselect);
+			})
+			
+			
+			ptFeatures = g.selectAll("circle")
+				.data(featuresdata_speed)
+				
+			
+			ptFeatures.enter()
+				.append("circle")
+				.attr("r", 3)
+				.attr("class", "waypoints")
+				.attr('fill','red')
+				.attr('opacity',0.7)
+			
+			ptFeatures_load = g.selectAll("circle")
+				.data(featuresdata_passenger)
+				
+			
+			ptFeatures_load.enter()
+				.append("circle")
+				.attr("r", 3)
+				.attr("class", "waypoints")
+				.attr('fill','blue')
+				.attr('opacity',0.3)
+				
+				
+			map.on("viewreset", reset);
+			reset()
+			function reset() {
+				var bounds = d3path.bounds(geodata),
+					topLeft = bounds[0],
+					bottomRight = bounds[1];
+			
+				
+				ptFeatures.attr("transform",
+					function(d) {
+						return "translate(" +
+							applyLatLngToLayer(d).x + "," +
+							applyLatLngToLayer(d).y + ")";
+					});
+				ptFeatures_load.attr("transform",
+					function(d) {
+						return "translate(" +
+							applyLatLngToLayer(d).x + "," +
+							applyLatLngToLayer(d).y + ")";
+					});
+				
+				// Setting the size and location of the overall SVG container
+				svg.attr("width", bottomRight[0] - topLeft[0] + 120)
+					.attr("height", bottomRight[1] - topLeft[1] + 120)
+					.style("left", topLeft[0] - 50 + "px")
+					.style("top", topLeft[1] - 50 + "px");
+			
+			
+				// linePath.attr("d", d3path);
+				// linePath.attr("d", toLine)
+				// ptPath.attr("d", d3path);
+				g.attr("transform", "translate(" + (-topLeft[0] + 50) + "," + (-topLeft[1] + 50) + ")");
+			
+			} // end reset
+		function projectPoint(x, y) {
+			var point = map.latLngToLayerPoint(new L.LatLng(y, x));
+			this.stream.point(point.x, point.y);
+		} //end p
+		
+		}
+		
+	
+	// console.log(geodata)
+	renderbt.onclick = function(){
+		id_value =inputid.value
+		
+	
+		let svg = d3.select(map.getPanes().overlayPane).append("svg").attr('id','mapoverlay');
+		let g = svg.append("g").attr("class", "leaflet-zoom-hide");
+		var featuresdata = geodata.features.filter(function(d){
+			return d.properties.Vehicle_ID == id_value
+		})
+		console.log(featuresdata)
+		
+		// this is not needed right now, but for future we may need
+		// to implement some filtering. This uses the d3 filter function
+		// featuresdata is an array of point objects
+
+		// var featuresdata = collection.features.filter(function(d) {
+		//     return d.properties.id == "route1"
+		// })
+		
+		var time = featuresdata.map(function(d){
+				return d.properties.Timestamp
+		})
+		var interval = time[time.length-1]-time[0]
+		//stream transform. transforms geometry before passing it to
+		// listener. Can be used in conjunction with d3.geo.path
+		// to implement the transform. 
+		let Latitude_list = featuresdata.map(function(d){
+				return d.properties.latitude
+		})
+		let Longitude_list = featuresdata.map(function(d){
+				return d.properties.longitude
+		})
+		
+		featuresdata.forEach(function(d,i){
+			d.properties.current_speed = geo_distance(d.properties.latitude,d.properties.longitude,Latitude_list[i+1],Longitude_list[i+1])/(time[i+1]-d.properties.Timestamp)
+		})
+		let speed_list = featuresdata.map(function(d){
+				return d.properties.current_speed
+		})
+		featuresdata.forEach(function(d,i){
+			if (!d.properties.current_speed){
+				d.properties.current_speed = 0;
+			}
+			else if (d.properties.current_speed == Infinity){
+				d.properties.current_speed = featuresdata[i-1].properties.current_speed
+			}
+		})
+		
+		
+		var transform = d3.geo.transform({
+			point: projectPoint
+		});
+
+		//d3.geo.path translates GeoJSON to SVG path codes.
+		//essentially a path generator. In this case it's
+		// a path generator referencing our custom "projection"
+		// which is the Leaflet method latLngToLayerPoint inside
+		// our function called projectPoint
+		var d3path = d3.geo.path().projection(transform);
+
+
+		// Here we're creating a FUNCTION to generate a line
+		// from input points. Since input points will be in 
+		// Lat/Long they need to be converted to map units
+		// with applyLatLngToLayer
+		var toLine = d3.svg.line()
+			.interpolate("linear")
+			.x(function(d) {
+				return applyLatLngToLayer(d).x
+			})
+			.y(function(d) {
+				return applyLatLngToLayer(d).y
+			});
+		
+		
+		var date_left = new Date(featuresdata[0].properties.Timestamp*1000)
+		var date_right = new Date(featuresdata[featuresdata.length-1].properties.Timestamp*1000)
+		
+		
+		var timescale_x = d3.time.scale()
+						.domain([date_left,date_right])
+					    .range([0,600])
+		var max_paseenger = d3.max(featuresdata,function(d){
+			return d.properties.Num_Passengers;
+		})
+		
+		var max_speed_real = featuresdata.map(function(d){
+			return d.properties.current_speed;
+		})
+		var num_y = d3.scale.linear()
+					.domain([0,max_paseenger])
+					.range([300,0])
+		console.log(max_speed_real)
+		var speed_y = d3.scale.linear()
+					.domain([0,70])
+					.range([300,0])
+		
+		
+		var timeAxis = d3.svg.axis()
+					.scale(timescale_x)
+					.orient("bottom")
+					.ticks(24)
+					.tickSize(5,1)
+					
+		var numAxis = d3.svg.axis()
+						.scale(num_y)
+						.orient('left')
+						.tickSize(5,1)
+		
+		var speedAxis = d3.svg.axis()
+						.scale(speed_y)
+						.orient('right')
+						.tickSize(5,1)
+				
+		let timesvg = d3.select('#timescale').append('svg')
+			.attr('width','700')
+			.attr('height','800')
+			.attr('id','plotsvg')
+		
+		let timeg=timesvg.append('g')
+					.attr('transform','translate(50,'+(350) +')')
+		let timeg_y=timesvg.append('g')
+					.attr('transform','translate(50,50)')
+		
+		let timeg_speed = timesvg.append('g')
+					.attr('transform','translate(650,50)')
+					
+		timeg.append('g')
+			.call(timeAxis)
+		timeg_y.append('g')
+			.call(numAxis)
+		timeg_speed.append('g')
+			.call(speedAxis)
+		
+		
+		let lineFunction = d3.svg.line()
+		                         .x(function(d) { 
+									 return timescale_x(new Date(d.properties.Timestamp*1000)) 
+									 
+								 })
+		                         .y(function(d) { return (num_y(d.properties.Num_Passengers))-300; })
+		                         .interpolate("linear");
+		
+		let lineGraph = timeg.append("path")
+			.attr("d", lineFunction(featuresdata))
+			.attr("stroke", "blue")
+			.attr("stroke-width", 2)
+			.attr("fill", "none");
+			
+		timeg.selectAll('text')
+				.style('font-size','5px')
+		timeg.append('text')
+			.text('time')
+			.attr('x','250px')
+			.attr('y','50px')
+			.attr('font-size','20px')
+		timeg_y.append('text')
+			.text('Number of Passengers')
+			.attr('font-size','15px')
+			.attr('fill','blue')
+			
+		timeg_speed.append('text')
+			.text('Speed')
+			.attr('font-size','15px')
+			.attr('fill','red')
+			.attr('x','-40')
+		let lineFunction_speed = d3.svg.line()
+		                         .x(function(d) { 
+									 return timescale_x(new Date(d.properties.Timestamp*1000)) 
+									 
+								 })
+		                         .y(function(d) { return (speed_y(2236.9362920544*d.properties.current_speed))-300; })
+		                         .interpolate("linear");
+		
+		let lineGraph_speed = timeg.append("path")
+			.attr("d", lineFunction_speed(featuresdata))
+			.attr("stroke", "red")
+			.attr("stroke-width", 2)
+			.attr("fill", "none");	
+				
+				
+		
+		// From now on we are essentially appending our features to the
+		// group element. We're adding a class with the line name
+		// and we're making them invisible
+
+		// these are the points that make up the path
+		// they are unnecessary so I've make them
+		// transparent for now
+		var ptFeatures = g.selectAll("circle")
+			.data(featuresdata)
+			.enter()
+			.append("circle")
+			.attr("r", 3)
+			.attr("class", "waypoints")
+			.style('opacity',0)
+
+		// Here we will make the points into a single
+		// line/path. Note that we surround the featuresdata
+		// with [] to tell d3 to treat all the points as a
+		// single line. For now these are basically points
+		// but below we set the "d" attribute using the 
+		// line creator function from above.
+		var linePath = g.selectAll(".lineConnect")
+			.data([featuresdata])
+			.enter()
+			.append("path")
+			.attr("class", "lineConnect")
+			.style('stroke','aqua')
+		
+		
+		// This will be our traveling circle it will
+		// travel along our path
+		let marker_id = 'marker'+ id_value
+		let marker = g.append("circle")
+			.attr("r", 10)
+			.attr("id", marker_id )
+			.attr("class", "travelMarker");
+
+
+		// For simplicity I hard-coded this! I'm taking
+		// the first and the last object (the origin)
+		// and destination and adding them separately to
+		// better style them. There is probably a better
+		// way to do this!
+		var originANDdestination = [featuresdata[0], featuresdata[featuresdata.length-1]]
+
+		var begend = g.selectAll(".drinks")
+			.data(originANDdestination)
+			.enter()
+			.append("circle", ".drinks")
+			.attr("r", 5)
+			.style("fill", "red")
+			.style("opacity", "1");
+		
+		// I want names for my coffee and beer
+	//         var text = g.selectAll("text")
+	//             .data(originANDdestination)
+	//             .enter()
+	//             .append("text")
+	//             .text(function(d) {
+	//                 return d.properties.name
+	//             })
+	//             .attr("class", "locnames")
+	//             .attr("y", function(d) {
+	//                 return -10
+	//             })
+		map.on("viewreset", reset);
+		reset();
+		// when the user zooms in or out you need to reset
+		// the view
+		
+			
+			
+			
+			
+			// this puts stuff on the map! 
+			
+		transition();
+		
+		transition_num();
+		transition_speed();
+		function transition_num(){
+		    	lineGraph.transition()
+		    		.duration(interval)
+		    		.attrTween("stroke-dasharray", tweenDash_num)
+					
+		    }
+			
+		
+		
+				// this function feeds the attrTween operator above with the 
+				// stroke and dash lengths
+		function tweenDash_num() {
+			return function(t) {
+				//total length of path (single value)
+				var l = lineGraph.node().getTotalLength(); 
+			
+				// this is creating a function called interpolate which takes
+				// as input a single value 0-1. The function will interpolate
+				// between the numbers embedded in a string. An example might
+				// be interpolatString("0,500", "500,500") in which case
+				// the first number would interpolate through 0-500 and the
+				// second number through 500-500 (always 500). So, then
+				// if you used interpolate(0.5) you would get "250, 500"
+				// when input into the attrTween above this means give me
+				// a line of length 250 followed by a gap of 500. Since the
+				// total line length, though is only 500 to begin with this
+				// essentially says give me a line of 250px followed by a gap
+				// of 250px.
+				interpolate = d3.interpolateString("0," + l, l + "," + l);
+				//t is fraction of time 0-1 since transition began
+				// var marker = d3.select("#"+marker_id);
+				
+				// p is the point on the line (coordinates) at a given length
+				// along the line. In this case if l=50 and we're midway through
+				// the time then this would 25.
+				
+		
+				//Move the marker to that point
+				
+				// console.log(interpolate(t))
+				return interpolate(t);
+			}
+		} //e
+		function transition_speed(){
+		    	lineGraph_speed.transition()
+		    		.duration(interval)
+		    		.attrTween("stroke-dasharray", tweenDash_speed)
+					
+		    }
+			
+		
+		
+				// this function feeds the attrTween operator above with the 
+				// stroke and dash lengths
+		function tweenDash_speed() {
+			return function(t) {
+				//total length of path (single value)
+				var l = lineGraph_speed.node().getTotalLength(); 
+			
+				// this is creating a function called interpolate which takes
+				// as input a single value 0-1. The function will interpolate
+				// between the numbers embedded in a string. An example might
+				// be interpolatString("0,500", "500,500") in which case
+				// the first number would interpolate through 0-500 and the
+				// second number through 500-500 (always 500). So, then
+				// if you used interpolate(0.5) you would get "250, 500"
+				// when input into the attrTween above this means give me
+				// a line of length 250 followed by a gap of 500. Since the
+				// total line length, though is only 500 to begin with this
+				// essentially says give me a line of 250px followed by a gap
+				// of 250px.
+				interpolate = d3.interpolateString("0," + l, l + "," + l);
+				//t is fraction of time 0-1 since transition began
+				// var marker = d3.select("#"+marker_id);
+				
+				// p is the point on the line (coordinates) at a given length
+				// along the line. In this case if l=50 and we're midway through
+				// the time then this would 25.
+				
+		
+				//Move the marker to that point
+				
+				// console.log(interpolate(t))
+				return interpolate(t);
+			}
+		} //e
+		// Reposition the SVG to cover the features.
+		function reset() {
+			var bounds = d3path.bounds(geodata),
+				topLeft = bounds[0],
+				bottomRight = bounds[1];
+
+			// here you're setting some styles, width, heigh etc
+			// to the SVG. Note that we're adding a little height and
+			// width because otherwise the bounding box would perfectly
+			// cover our features BUT... since you might be using a big
+			// circle to represent a 1 dimensional point, the circle
+			// might get cut off.
+
+			// text.attr("transform",
+			//     function(d) {
+			//         return "translate(" +
+			//             applyLatLngToLayer(d).x + "," +
+			//             applyLatLngToLayer(d).y + ")";
+			//     });
+
+
+			// for the points we need to convert from latlong
+			// to map units
+			begend.attr("transform",
+				function(d) {
+					return "translate(" +
+						applyLatLngToLayer(d).x + "," +
+						applyLatLngToLayer(d).y + ")";
+				});
+
+			ptFeatures.attr("transform",
+				function(d) {
+					return "translate(" +
+						applyLatLngToLayer(d).x + "," +
+						applyLatLngToLayer(d).y + ")";
+				});
+
+			// again, not best practice, but I'm harding coding
+			// the starting point
+
+			marker.attr("transform",
+				function() {
+					var y = featuresdata[0].geometry.coordinates[1]
+					var x = featuresdata[0].geometry.coordinates[0]
+					return "translate(" +
+						map.latLngToLayerPoint(new L.LatLng(y, x)).x + "," +
+						map.latLngToLayerPoint(new L.LatLng(y, x)).y + ")";
+				});
+
+
+			// Setting the size and location of the overall SVG container
+			svg.attr("width", bottomRight[0] - topLeft[0] + 120)
+				.attr("height", bottomRight[1] - topLeft[1] + 120)
+				.style("left", topLeft[0] - 50 + "px")
+				.style("top", topLeft[1] - 50 + "px");
+
+
+			// linePath.attr("d", d3path);
+			linePath.attr("d", toLine)
+			
+			// ptPath.attr("d", d3path);
+			g.attr("transform", "translate(" + (-topLeft[0] + 50) + "," + (-topLeft[1] + 50) + ")");
+
+		} // end reset
+
+		// the transition function could have been done above using
+		// chaining but it's cleaner to have a separate function.
+		// the transition. Dash array expects "500, 30" where 
+		// 500 is the length of the "dash" 30 is the length of the
+		// gap. So if you had a line that is 500 long and you used
+		// "500, 0" you would have a solid line. If you had "500,500"
+		// you would have a 500px line followed by a 500px gap. This
+		// can be manipulated by starting with a complete gap "0,500"
+		// then a small line "1,500" then bigger line "2,500" and so 
+		// on. The values themselves ("0,500", "1,500" etc) are being
+		// fed to the attrTween operator
+		function transition() {
+			linePath.transition()
+				.duration(interval)
+				.attrTween("stroke-dasharray", tweenDash)
+				
+		} //end transition
+
+		// this function feeds the attrTween operator above with the 
+		// stroke and dash lengths
+		function tweenDash() {
+			return function(t) {
+				//total length of path (single value)
+				var l = linePath.node().getTotalLength(); 
+			
+				// this is creating a function called interpolate which takes
+				// as input a single value 0-1. The function will interpolate
+				// between the numbers embedded in a string. An example might
+				// be interpolatString("0,500", "500,500") in which case
+				// the first number would interpolate through 0-500 and the
+				// second number through 500-500 (always 500). So, then
+				// if you used interpolate(0.5) you would get "250, 500"
+				// when input into the attrTween above this means give me
+				// a line of length 250 followed by a gap of 500. Since the
+				// total line length, though is only 500 to begin with this
+				// essentially says give me a line of 250px followed by a gap
+				// of 250px.
+				interpolate = d3.interpolateString("0," + l, l + "," + l);
+				//t is fraction of time 0-1 since transition began
+				var marker = d3.select("#"+marker_id);
+				
+				// p is the point on the line (coordinates) at a given length
+				// along the line. In this case if l=50 and we're midway through
+				// the time then this would 25.
+				var p = linePath.node().getPointAtLength(t * l);
+
+				//Move the marker to that point
+				marker.attr("transform", "translate(" + p.x + "," + p.y + ")"); //move marker
+				// console.log(interpolate(t))
+				return interpolate(t);
+			}
+		} //end tweenDash
+
+		// Use Leaflet to implement a D3 geometric transformation.
+		// the latLngToLayerPoint is a Leaflet conversion method:
+		//Returns the map layer point that corresponds to the given geographical
+		// coordinates (useful for placing overlays on the map).
+		function projectPoint(x, y) {
+			var point = map.latLngToLayerPoint(new L.LatLng(y, x));
+			this.stream.point(point.x, point.y);
+		} //end projectPoint
+		
+		clearbt.onclick = function(){
+			d3.select('#mapoverlay').remove()
+			d3.select('#plotsvg').remove()
+			
+			
+			
+		}
+// 
+		 }
+//     // similar to projectPoint this function converts lat/long to
+//     // svg coordinates except that it accepts a point from our 
+//     // GeoJSON
+	// 
+		 function applyLatLngToLayer(d) {        
+			 var y = d.geometry.coordinates[1]
+			var x = d.geometry.coordinates[0]
+		   return map.latLngToLayerPoint(new L.LatLng(y, x))
+
+
+		 }
+    </script>
+</body>
+
+</html>
