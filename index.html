@@ -27,6 +27,11 @@
 		top:740px;
 		
 	}
+	#Answer{
+		position:absolute;
+		top:450px;
+		left:740px;
+	}
     svg {
         position: relative;
     }
@@ -71,14 +76,24 @@
 	<div id="timescale">
 		
 	</div>
+	<div id="Answer">
+		<h3>Question 3 & 4 & 8</h3>
+		<p>Type the vehicle ID into the box (without clicking the render button), you can hove the black rectange box to see
+		 the distribution of overspeed(<span style='color:red'>red</span>) and overload(<span style='color:blue'>blue</span>) area by hours.</p>
+		 <p>Type the vehicle ID into the box and click render, you can see an animation showing the activity of that vehicle 
+		 in the simulation. Combined with the speed and number of passenger in the figure above, we could identy when did the vehicle overspeed and overload</p>
+		 <p>Combine with these two functions, you can first generate a whole day speed and number of passenger charts. Go back to identify where it overspeed and overload by 
+		 hover the hour rectange above the map</p>
+		
+	</div>
 	<p></p>
 	
 	<div id="contorl">
 		<input placeholder="input the taxi id" name="" id="inputid" value="" />
 		<button type="button" id= 'idselect'>render</button>
+		<button type='button' id = 'clear'>Clear</button>
 		<button type='button' id = 'overspeed'>Overspeed</button>
 		<button type='button' id = 'overload'>Overload</button>
-		<button type='button' id = 'clear'>Clear</button>
 	
 	</div>
 	
